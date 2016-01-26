@@ -25,6 +25,15 @@ void Main()
 	// Comparison
 	EnumerableX.FromValues(0, 1, 2, 2, 3).OrderBy(i => i, (k1, k2) => k1 - k2).Dump("Order by k1-k2");
 	EnumerableX.FromValues(0, 1, 2, 2, 3).OrderBy(i => i, (k1, k2) => k2 - k1).Dump("Order by k2-k1");
+
+	// Statistics
+	
+	
+	// Quantifiers
+	EnumerableX.FromValues(0, 1, 2, 2, 3).ContainsAny(EnumerableX.FromValues(0, 11, 12, 13)).Dump("Quantifiers");
+
+	// Iteration
+	EnumerableX.FromValues(0, 1, 2, 3).ForEach((i) => { i.Dump("Iteration"); return i < 2; });
 }
 
 
@@ -249,5 +258,262 @@ public static class EnumerableX
 		Func<TSource, TSource, bool> equality,
 		Func<TSource, int> getHashCode = null) => first.Except(second, equality.Comparer(getHashCode));
 	#endregion
-}
 
+	#region Returns a new collection - Comparison
+	
+	public static Dictionary<TKey, TElement> ToDictionary<TSource, TKey, TElement>(
+		this IEnumerable<TSource> source,
+		Func<TSource, TKey> keySelector,
+		Func<TSource, TElement> elementSelector,
+		Func<TKey, TKey, bool> equality,
+		Func<TKey, int> getHashCode = null) =>
+			source.ToDictionary(keySelector, elementSelector, equality.Comparer(getHashCode));
+
+	public static ILookup<TKey, TElement> ToLookup<TSource, TKey, TElement>(
+		this IEnumerable<TSource> source,
+		Func<TSource, TKey> keySelector,
+		Func<TSource, TElement> elementSelector,
+		Func<TKey, TKey, bool> equality,
+		Func<TKey, int> getHashCode = null) =>
+			source.ToLookup(keySelector, elementSelector, equality.Comparer(getHashCode));
+
+	#endregion
+
+	public static int IndexOf<TSource>(
+		this IEnumerable<TSource> source,
+		TSource search,
+		IEqualityComparer<TSource> comparer = null,
+		int startIndex = 0,
+		int? count = null)
+	{
+		comparer = comparer ?? EqualityComparer<TSource>.Default;
+		source = source.Skip(startIndex);
+		if (count != null)
+		{
+			source = source.Take(count.Value);
+		}
+
+		int index = checked(-1 + startIndex);
+		foreach (TSource value in source)
+		{
+			index = checked(index + 1);
+			if (comparer.Equals(value, search))
+			{
+				return index;
+			}
+		}
+
+		return -1;
+	}
+	
+	#region Statistics
+	public static double VariancePopulation<TSource, TKey>(
+		this IEnumerable<TSource> source,
+		Func<TSource, TKey> keySelector,
+		IFormatProvider formatProvider = null)
+		where TKey : IConvertible
+	{
+		double[] keys = source.Select(key => keySelector(key).ToDouble(formatProvider)).ToArray();
+		double mean = keys.Average();
+		return keys.Sum(key => (key - mean) * (key - mean)) / keys.Length;
+	}
+
+	public static double VarianceSample<TSource, TKey>(
+		this IEnumerable<TSource> source,
+		Func<TSource, TKey> keySelector,
+		IFormatProvider formatProvider = null)
+		where TKey : IConvertible
+	{
+		double[] keys = source.Select(key => keySelector(key).ToDouble(formatProvider)).ToArray();
+		double mean = keys.Average();
+		return keys.Sum(key => (key - mean) * (key - mean)) / (keys.Length - 1);
+	}
+
+	public static double Variance<TSource, TKey>(
+		this IEnumerable<TSource> source,
+		Func<TSource, TKey> keySelector,
+		IFormatProvider formatProvider = null)
+		where TKey : IConvertible
+	{
+		return source.VarianceSample(keySelector, formatProvider);
+	}
+
+	// Excel STDEV.P/STDEV.S/STDEV functions:
+	public static double StandardDeviationPopulation<TSource, TKey>(
+		this IEnumerable<TSource> source,
+		Func<TSource, TKey> keySelector,
+		IFormatProvider formatProvider = null)
+		where TKey : IConvertible
+	{
+		// Excel STDEV.P function:
+		// https://support.office.com/en-us/article/STDEV-P-function-6e917c05-31a0-496f-ade7-4f4e7462f285
+		return Math.Sqrt(source.VariancePopulation(keySelector, formatProvider));
+	}
+
+	public static double StandardDeviationSample<TSource, TKey>(
+		this IEnumerable<TSource> source,
+		Func<TSource, TKey> keySelector,
+		IFormatProvider formatProvider = null)
+		where TKey : IConvertible
+	{
+		// Excel STDEV.S function:
+		// https://support.office.com/en-us/article/STDEV-S-function-7d69cf97-0c1f-4acf-be27-f3e83904cc23
+		return Math.Sqrt(source.VarianceSample(keySelector, formatProvider));
+	}
+
+	public static double StandardDeviation<TSource, TKey>(
+		this IEnumerable<TSource> source,
+		Func<TSource, TKey> keySelector,
+		IFormatProvider formatProvider = null)
+		where TKey : IConvertible
+	{
+		// Excel STDDEV.P function:
+		// https://support.office.com/en-us/article/STDEV-function-51fecaaa-231e-4bbb-9230-33650a72c9b0
+		return Math.Sqrt(source.Variance(keySelector, formatProvider));
+	}
+
+	// Excel PERCENTILE.EXC/PERCENTILE.INC/PERCENTILE functions:
+	public static double PercentileExclusive<TSource, TKey>(
+		this IEnumerable<TSource> source,
+		Func<TSource, TKey> keySelector,
+		double percentile,
+		IComparer<TKey> comparer = null,
+		IFormatProvider formatProvider = null)
+		where TKey : IConvertible
+	{
+//		Contract.Requires<ArgumentNullException>(source != null);
+//		Contract.Requires<ArgumentNullException>(keySelector != null);
+//		Contract.Requires<ArgumentOutOfRangeException>(
+//			percentile >= 0 && percentile <= 1,
+//			"percentile must be in the range of 1 / source.Count() and 1 - 1 / (source.Count() + 1).");
+
+		// Excel PERCENTILE.EXC function:
+		// https://support.office.com/en-us/article/PERCENTILE-EXC-function-bbaa7204-e9e1-4010-85bf-c31dc5dce4ba
+		comparer = comparer ?? System.Collections.Generic.Comparer<TKey>.Default;
+		
+		TKey[] orderedKeys = source.Select(keySelector).OrderBy(key => key, comparer).ToArray();
+		int length = orderedKeys.Length;
+		if (percentile < (double)1 / length || percentile > 1 - (double)1 / (length + 1))
+		{
+			throw new ArgumentOutOfRangeException(
+				nameof(percentile),
+				$"{nameof(percentile)} must be in the range of 1/source.Count() and 1 - 1 / source.Count().");
+		}
+
+		double index = percentile * (length + 1) - 1;
+		int integerComponentOfIndex = (int)index;
+		double decimalComponentOfIndex = index - integerComponentOfIndex;
+		double keyAtIndex = orderedKeys[integerComponentOfIndex].ToDouble(formatProvider);
+
+		double keyAtNextIndex = orderedKeys[integerComponentOfIndex + 1].ToDouble(formatProvider);
+		return keyAtIndex + (keyAtNextIndex - keyAtIndex) * decimalComponentOfIndex;
+	}
+
+	public static double PercentileInclusive<TSource, TKey>(
+		this IEnumerable<TSource> source,
+		Func<TSource, TKey> keySelector,
+		double percentile,
+		IComparer<TKey> comparer = null,
+		IFormatProvider formatProvider = null)
+		where TKey : IConvertible
+	{
+//		Contract.Requires<ArgumentNullException>(source != null);
+//		Contract.Requires<ArgumentNullException>(keySelector != null);
+//		Contract.Requires<ArgumentOutOfRangeException>(
+//			percentile >= 0 && percentile <= 1, "percentile must be between 0 and 1.");
+
+		// Excel PERCENTILE.INC function:
+		// https://support.office.com/en-us/article/PERCENTILE-INC-Function-DAX-15f69af8-1588-4863-9acf-2acc00384ffd
+		comparer = comparer ?? System.Collections.Generic.Comparer<TKey>.Default;
+		TKey[] orderedKeys = source.Select(keySelector).OrderBy(key => key, comparer).ToArray();
+		int length = orderedKeys.Length;
+
+		double index = percentile * (length - 1);
+		int integerComponentOfIndex = (int)index;
+		double decimalComponentOfIndex = index - integerComponentOfIndex;
+		double keyAtIndex = orderedKeys[integerComponentOfIndex].ToDouble(formatProvider);
+
+		if (integerComponentOfIndex >= length - 1)
+		{
+			return keyAtIndex;
+		}
+
+		double keyAtNextIndex = orderedKeys[integerComponentOfIndex + 1].ToDouble(formatProvider);
+		return keyAtIndex + (keyAtNextIndex - keyAtIndex) * decimalComponentOfIndex;
+	}
+
+	public static double Percentile<TSource, TKey>(
+		this IEnumerable<TSource> source,
+		Func<TSource, TKey> keySelector,
+		double percentile,
+		IComparer<TKey> comparer = null,
+		IFormatProvider formatProvider = null)
+		where TKey : IConvertible
+	{
+//		Contract.Requires<ArgumentNullException>(source != null);
+//		Contract.Requires<ArgumentNullException>(keySelector != null);
+//		Contract.Requires<ArgumentOutOfRangeException>(
+//			percentile >= 0 && percentile <= 1, "percentile must be between 0 and 1.");
+
+		// Excel PERCENTILE function:
+		// https://support.office.com/en-us/article/PERCENTILE-function-91b43a53-543c-4708-93de-d626debdddca
+		// https://en.wikipedia.org/wiki/Percentile#Definition_of_the_Microsoft_Excel_method
+		return PercentileInclusive(source, keySelector, percentile, comparer, formatProvider);
+	}
+	#endregion
+
+
+	#region Quantifiers
+	
+	public static bool IsNullOrEmpty<TSource>(this IEnumerable<TSource> source) => source == null || !source.Any();
+
+	public static bool IsNotNullOrEmpty<TSource>(this IEnumerable<TSource> source) => source != null && source.Any();
+
+	public static bool ContainsAny<TSource>(
+							this IEnumerable<TSource> source,
+							IEnumerable<TSource> values,
+							IEqualityComparer<TSource> comparer = null)
+							{
+								return source.Any(value => values.Contains(value, comparer));
+							}
+	#endregion
+
+
+	#region Iteration
+
+	public static void ForEach<TSource>(this IEnumerable<TSource> source, Func<TSource, bool> onNext)
+	{
+		foreach (TSource value in source)
+		{
+			if (!onNext(value))
+			{
+				break;
+			}
+		}
+	}
+
+	public static void ForEach<TSource>(this IEnumerable<TSource> source, Func<TSource, int, bool> onNext)
+	{
+		int index = 0;
+		foreach (TSource value in source)
+		{
+			if (!onNext(value, index))
+			{
+				break;
+			}
+
+			index = checked(index + 1); // Not checked in the source code.
+		}
+	}
+
+	public static void ForEach<TSource>(this IEnumerable<TSource> source)
+	{
+		using (IEnumerator<TSource> iterator = source.GetEnumerator())
+		{
+			while (iterator.MoveNext())
+			{
+			}
+		}
+	}
+	#endregion
+}
